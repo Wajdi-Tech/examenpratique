@@ -1,0 +1,163 @@
+# playbook.yml — Version finale 100 % fonctionnelle (2025)
+---
+- name: Configuration complète DEVOPS-LAB - Tout-en-un
+  hosts: all
+  become: yes
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
+  tasks:
+    # =============================================
+    # 1. Mise à jour système
+    # =============================================
+    - name: Mise à jour du cache APT
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Upgrade complet + nettoyage
+      apt:
+        upgrade: dist
+        autoremove: yes
+        autoclean: yes
+
+    # =============================================
+    # 2. Installation Docker (méthode officielle 2025)
+    # =============================================
+    - name: Installation des prérequis Docker
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+
+    - name: Créer le dossier pour les clés
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Ajouter la clé GPG Docker
+      shell: curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      args:
+        creates: /etc/apt/keyrings/docker.gpg
+
+    - name: Ajouter le dépôt Docker
+      copy:
+        content: |
+          deb [arch={{ ansible_architecture }} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
+        dest: /etc/apt/sources.list.d/docker.list
+
+    - name: Installer Docker + Docker Compose v2
+      apt:
+        update_cache: yes
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: Ajouter l'utilisateur au groupe docker
+      user:
+        name: masterw
+        groups: docker
+        append: yes
+
+    - name: Démarrer et activer Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    # =============================================
+    # 3. Installation Terraform
+    # =============================================
+    - name: Ajouter la clé GPG HashiCorp
+      shell: wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+      args:
+        creates: /usr/share/keyrings/hashicorp-archive-keyring.gpg
+
+    - name: Ajouter le dépôt HashiCorp
+      copy:
+        content: |
+          deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main
+        dest: /etc/apt/sources.list.d/hashicorp.list
+
+    - name: Installer Terraform
+      apt:
+        update_cache: yes
+        name: terraform
+        state: latest
+
+    # =============================================
+    # 4. Installation Jenkins
+    # =============================================
+    - name: Installer OpenJDK 11
+      apt:
+        name: openjdk-11-jdk
+        state: present
+
+    - name: Ajouter la clé Jenkins
+      shell: curl -fsSL https://pkg.jenkins.io/debian/jenkins.io-2023.key | tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+      args:
+        creates: /usr/share/keyrings/jenkins-keyring.asc
+
+    - name: Ajouter le dépôt Jenkins
+      copy:
+        content: |
+          deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian binary/
+        dest: /etc/apt/sources.list.d/jenkins.list
+
+    - name: Installer Jenkins
+      apt:
+        update_cache: yes
+        name: jenkins
+        state: present
+
+    - name: Démarrer et activer Jenkins
+      systemd:
+        name: jenkins
+        state: started
+        enabled: yes
+
+    - name: Attendre que Jenkins soit accessible (port 8080)
+      wait_for:
+        port: 8080
+        host: localhost
+        delay: 10
+        timeout: 300
+
+    # ================== PARTIE CORRIGÉE ==================
+    - name: Récupérer le mot de passe initial Jenkins (si existe)
+      command: cat /var/lib/jenkins/secrets/initialAdminPassword
+      register: jenkins_pass
+      changed_when: false
+      failed_when: false
+      ignore_errors: yes
+
+    - name: Définir le message du mot de passe
+      set_fact:
+        jenkins_password_msg: >-
+          {% if jenkins_pass.stdout is defined and jenkins_pass.stdout|length > 0 %}
+          {{ jenkins_pass.stdout }}
+          {% else %}
+          Jenkins déjà débloqué – mot de passe initial supprimé (normal)
+          {% endif %}
+
+    # ================== AFFICHAGE FINAL BEAU ==================
+    - name: "AFFICHAGE FINAL - TOUT EST PRÊT !"
+      debug:
+        msg: |
+          ════════════════════════════════════════════════════════════
+                     TOUT EST INSTALLÉ ET CONFIGURÉ AVEC SUCCÈS !
+          ════════════════════════════════════════════════════════════
+          Docker    → OK (teste : docker run hello-world)
+          Terraform → OK (terraform --version)
+          Jenkins   → OK → http://{{ ansible_host }}:8080
+          ────────────────────────────────────────────────────────────
+          Mot de passe administrateur Jenkins (première connexion) :
+          {{ jenkins_password_msg }}
+          ════════════════════════════════════════════════════════════
