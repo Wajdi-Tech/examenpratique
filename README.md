@@ -26,7 +26,8 @@ Pipeline Jenkins + Push Docker Hub + Slack
 
 ![01-jenkins-pipeline-vert](captures/01-jenkins-pipeline-vert.png)
 
-![notfication Slack](captures/notfication Slack.png)
+![notfication Slack](captures/07-notification-slack.png)
+
 
 Argo CD → Application Synced & Healthy
 
